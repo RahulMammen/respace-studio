@@ -1,5 +1,5 @@
 // Starts the production backend (serving frontend/dist) with an isolated data
-// directory and the CI-only AI test double. Never uses a real API key.
+// directory and the CI-only AI test double, unless LIVE_AI=1 is set for a manual live run.
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,8 +18,8 @@ const child = spawn(python, ["-m", "app.serve", "--port", port], {
     ...process.env,
     DATA_DIR: data,
     DATABASE_URL: `sqlite:///${join(data, "e2e.sqlite3").replaceAll("\\", "/")}`,
-    AI_PROVIDER: "mock",
-    GEMINI_API_KEY: "",
+    // LIVE_AI=1 (manual only) uses the real provider and the key from backend/.env.
+    ...(process.env.LIVE_AI ? { AI_PROVIDER: "gemini" } : { AI_PROVIDER: "mock", GEMINI_API_KEY: "" }),
     SESSION_SECRET: "e2e-only-secret",
   },
 });

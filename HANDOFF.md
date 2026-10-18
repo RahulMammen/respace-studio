@@ -11,7 +11,7 @@ Tested library versions: FastAPI 0.143.3, Pydantic 2.14.1, SQLAlchemy 2.1.5, Ale
 |---|---|
 | `ruff check`, `ruff format --check` (backend) | clean |
 | `mypy app` | no issues in 33 files |
-| `pytest` | **83 passed**. AI paths use provider test doubles. |
+| `pytest` | **87 passed**. AI paths use provider test doubles. |
 | `eslint .`, `tsc -b` (frontend) | clean |
 | `vitest run` | **12 passed**: shared geometry fixtures, rendered-box transform, overlap and self-intersection, undo/redo save queue, stale detection, API client CSRF and errors |
 | `vite build` | OK |
@@ -35,15 +35,41 @@ What the backend tests cover:
 
 The browser workflows cover: register; create a project; import a PDF page; calibrate (1 px = 10.0 mm); trace (20.0 m²); add a door; confirm; set furniture and brief; generate three proposals (test double, labelled); check that rendered meshes stay inside validated footprints; edit manually; lock; undo/redo; make a chat edit where the locked sofa is preserved; reload persistence; PNG and JSON export; feedback; history, compare and presentation; summary and schedule CSV.
 
-## Live AI verification
-**Status: BLOCKED. No `GEMINI_API_KEY` has been configured in `backend/.env`.**
-- No live generation, conversational edit, outline extraction or review has been run against Google Gemini.
-- Every AI behaviour listed above has been verified only with deterministic test doubles. **That does not show the full AI workflow works with the live model.**
-- To verify after adding the key, record the model, date and results here:
-  1. `cd backend; .venv\Scripts\python -m app.ai.smoke`. This sends one small synthetic structured-output request and should print `OK model=...`.
-  2. Start the app, open **Sample · Warm living room**, generate 3 proposals, and note each one's validation status and repair rounds (Settings → Last AI request).
-  3. Lock the sofa, ask "Keep the arrangement and sofa. Make the chairs visually lighter, change the floor to pale oak, and add warm accent lighting." Confirm in the preview that the sofa is unchanged, then apply.
-  4. Ask "Try another arrangement using the same required inventory" and confirm that the locks are restored.
+## Live AI verification (gemini-3.8-flash, free tier, 2026-10-18)
+The key is configured. All runs used synthetic sample projects in a throwaway data directory, with bounded calls (`backend/scripts/live_ai_check.py`). Paid billing was never enabled.
+
+| Check | Result |
+|---|---|
+| Smoke (`python -m app.ai.smoke`) | **Passed.** Valid structured JSON in 16.3 s; 70 input, 59 output and 342 thinking tokens. The placement was inside the room, but the rotation was 0 for "facing north", which is wrong under our convention. The smoke prompt does not explain the convention; the generation prompts do. |
+| First smoke attempt | **Failed and fixed.** The reply was truncated (`{"x": 2.0`) because thinking tokens count toward `max_output_tokens`. Truncation is now detected and the thinking level is set per task. |
+| Live generation, warm living room, 3 proposals | **Ran:** 3 calls (1 generation and 2 batched repairs), 134 s, about 21.5k tokens. Each proposal had 7 objects with no conversion errors and stayed inside the room without collisions. **All 3 stayed invalid after 2 repairs, on one check only: furniture reachability.** Proposal status was reported honestly as "Needs attention". |
+| Locked sofa, asked "Move the sofa 50 cm towards the window" | **Passed.** The model replied that the position is locked, returned no move operation, and listed a conflict. The sofa's position, rotation, size and locks were identical in the proposal. |
+| Locked sofa, "Try another arrangement using the same required inventory" | **Passed for locks.** Intent was rearrange; 72 s; the chairs, lamp and bookshelf moved. The sofa's position, rotation, size and locks were preserved. The result still failed the old reachability rule. |
+| Spec revision request (lighter chairs, pale oak floor, warm accents, sofa locked) and "Make the lighting warmer" | **Not verified.** Both calls failed instantly with `RuntimeError: Event loop is closed` (the SDK client was reused across event loops). This is fixed, but the requests have not been re-run live. |
+| Outline extraction (study sample) | **Not verified.** It failed with the same event-loop bug; after the fix, the quota was exhausted before a re-run. |
+| Visual review with a real canvas screenshot | **Not verified** (quota). A manual spec is ready: `LIVE_AI=1 npx playwright test live-review`. |
+| Quota handling | **Verified live.** After about 20 calls, the free-tier quota was exhausted. The Interactions endpoint hung until timeout (users would see "took too long"). The adapter now uses `generate_content`, which returns HTTP 429 at once, and the app reports "rate limit or free-tier quota was reached". |
+
+Fixes made because of the live runs (all tested; 87 backend tests):
+- the client is bound to the current event loop;
+- thinking level is set per task, and truncation is detected;
+- provider errors are classified precisely, with a key-free excerpt;
+- generated proposals are kept when a repair call fails or times out;
+- the adapter uses `generate_content` so quota errors appear promptly;
+- repair prompts include per-check hints;
+- walkway rule: the main walkway width (0.9 m) applies between doors, and a separate furniture access width (0.6 m, configurable) applies to reaching furniture. Seats can be approached beside their front edge. The rule and its rationale are in `docs/geometry.md`.
+
+**Outstanding:**
+- live generation re-run under the new access rule;
+- the spec revision request and the lighting edit;
+- outline extraction;
+- visual review.
+
+These need the free-tier quota to reset (daily limits reset at midnight Pacific time). Run:
+```powershell
+cd backend; .venv\Scripts\python scripts\live_ai_check.py
+cd ..rontend; $env:LIVE_AI=1; npx playwright test live-review
+```
 
 ## LAN verification (2026-10-18)
 `python -m app.serve --lan --port 8010`, accessed from `http://192.168.68.106:8010`:
