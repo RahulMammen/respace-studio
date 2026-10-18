@@ -340,3 +340,34 @@ def test_samples_created_and_valid(client):
     full = client.get(f"/api/projects/{made[1]['id']}/alternatives/{two['id']}").json()
     assert {o["room_id"] for o in full["scene"]["objects"]} == {"living", "bedroom"}
     assert full["validation"]["status"] in ("valid", "warnings"), full["validation"]["issues"]
+
+
+def test_lan_same_origin_allowed_and_cross_origin_blocked(client):
+    """LAN testers reach the app at the host's network address; same-origin must work."""
+
+    lan = {"Host": "192.168.1.50:8000"}
+    r = client.tc.post(
+        "/api/auth/register",
+        json={"email": "lan@example.com", "password": "correct horse battery", "display_name": "LAN"},
+        headers={**lan, "Origin": "http://192.168.1.50:8000"},
+    )
+    assert r.status_code == 201
+    r = client.tc.post(
+        "/api/auth/login",
+        json={"email": "lan@example.com", "password": "correct horse battery"},
+        headers={**lan, "Origin": "http://192.168.1.51:8000"},
+    )
+    assert r.status_code == 403
+    r = client.tc.post(
+        "/api/auth/login",
+        json={"email": "lan@example.com", "password": "correct horse battery"},
+        headers={**lan, "Origin": "null"},
+    )
+    assert r.status_code == 403
+
+
+def test_security_headers_present(client):
+    r = client.get("/api/health")
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert r.headers["x-frame-options"] == "DENY"
+    assert r.headers["cache-control"] == "no-store"

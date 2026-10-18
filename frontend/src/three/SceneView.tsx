@@ -174,6 +174,9 @@ function SceneContent(p: Props & { presetRef: React.MutableRefObject<(p: Preset)
     const isOrtho = (camera as THREE.OrthographicCamera).isOrthographicCamera === true;
     if (isOrtho !== (viewMode === "plan")) return;
     applyPreset(viewMode === "walk" ? "entrance" : "reset");
+    // Controls attach to a new default camera one frame later; settle the view again.
+    const raf = requestAnimationFrame(() => applyPreset(viewMode === "walk" ? "entrance" : "reset"));
+    return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, camera, b.cx, b.cy, b.size]);
 

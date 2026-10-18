@@ -208,6 +208,7 @@ input[type="range"].kelvin {
   border-radius: 6px;
   background: linear-gradient(90deg, #ffa860, #ffd7a8, #fff4e8, #e6efff);
 }
+.range-row strong { white-space: nowrap; }
 .range-row {
   display: flex;
   align-items: center;
@@ -1499,6 +1500,15 @@ input[type="range"].kelvin {
     overflow: auto;
     height: auto;
     min-height: 100%;
+    grid-template-rows: auto auto auto;
+  }
+  .save-state,
+  .topbar .brand {
+    display: none;
+  }
+  .topbar-right .icon-btn {
+    width: 36px;
+    height: 36px;
   }
   .topbar {
     grid-template-columns: 1fr auto;

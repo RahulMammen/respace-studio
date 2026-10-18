@@ -26,12 +26,19 @@ Stage B in progress. Plan approved 2026-10-18 (see `BUILD_SPEC.md` section 0).
 - Shared geometry fixtures (`shared/geometry_fixtures.json`) checked by pytest and Vitest.
 
 ## Verification so far
-- `backend`: ruff, ruff format, mypy clean; pytest 81 passed (mock/test-double AI only).
+- `backend`: ruff, ruff format, mypy clean; pytest 83 passed (test-double AI only).
 - `frontend`: eslint clean; tsc clean; vitest 7 passed; vite build OK.
-- Visual check (built app via FastAPI on 127.0.0.1:8000): sign-in, projects, design orbit and plan views.
+- Playwright: 9 workflow steps passed locally (register, PDF import, calibrate 10.0 mm/px, trace 20.0 m²,
+  door, confirm, furnish, generate with test double, rendered-bounds check, manual edit, lock, undo/redo,
+  chat edit with locked sofa preserved, reload, PNG + JSON export, feedback, history/compare/presentation).
+- LAN mode (2026-10-18): served on 0.0.0.0:8010; via http://192.168.68.106:8010 same-origin sign-in worked,
+  cross-origin POST returned 403, and every browser request targeted the LAN origin (no localhost calls).
+- Screenshots captured with Playwright (`docs/screenshots/`), desktop 1440x900 and phone 390x844; fixed
+  issues found: canvas height collapse, rotated plan camera, overlay occlusion, chat panel covering Apply,
+  mobile header overlap, missing accessible names, eager PDF chunk.
 
 ## Blockers
 - Live AI verification blocked until `GEMINI_API_KEY` is set in `backend/.env`.
 
 ## Next action
-- Playwright end-to-end workflows; visual polish pass; LAN-mode verification; documentation.
+- Fresh-clone verification; CI confirmation; live AI checks once the key is added; HANDOFF.md.

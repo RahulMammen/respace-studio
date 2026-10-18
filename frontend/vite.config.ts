@@ -20,7 +20,6 @@ export default defineConfig({
         advancedChunks: {
           groups: [
             { name: "three", test: /node_modules[\\/](three|@react-three)[\\/]/ },
-            { name: "pdf", test: /node_modules[\\/]pdfjs-dist[\\/]/ },
           ],
         },
       },
