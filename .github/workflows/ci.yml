@@ -82,6 +82,12 @@ jobs:
       - name: Browser workflows (AI test double, no live calls)
         working-directory: frontend
         run: npx playwright test
+      - name: Manual-test areas with simulated AI quota exhaustion (offline)
+        working-directory: frontend
+        env:
+          MOCK_AI_FAIL: quota
+          E2E_PORT: "8124"
+        run: npx playwright test manual-areas
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

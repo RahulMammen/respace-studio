@@ -8,6 +8,7 @@ never counts as live AI verification.
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -193,6 +194,13 @@ class MockProvider:
 
     async def generate_structured(self, request: StructuredRequest) -> StructuredResponse:
         self.requests.append(request)
+        # MOCK_AI_FAIL=quota simulates an exhausted provider quota offline (browser tests only).
+        if os.environ.get("MOCK_AI_FAIL") == "quota":
+            from .provider import AIQuotaExceeded
+
+            err = AIQuotaExceeded("simulated by MOCK_AI_FAIL")
+            err.user_message = "The AI provider's daily free-tier request limit (20) is used up. Try again later."
+            raise err
         out = self.handler(request)
         text = await out if not isinstance(out, str) else out
         return StructuredResponse(text=text, model=self.model)

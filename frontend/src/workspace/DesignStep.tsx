@@ -577,7 +577,11 @@ function ReviewPanel({ review, onClose }: { review: ReviewResult; onClose: () =>
 function WalkPad({ input }: { input: React.MutableRefObject<WalkInput> }) {
   const hold = (k: keyof WalkInput, v: number) => ({
     onPointerDown: (e: React.PointerEvent) => {
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      try {
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      } catch {
+        /* pointer already released: holding still works without capture */
+      }
       input.current[k] = v;
     },
     onPointerUp: () => (input.current[k] = 0),

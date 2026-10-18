@@ -525,7 +525,11 @@ function WalkControls({ rooms, input }: { rooms: Room[]; input?: React.MutableRe
       dragging = true;
       lx = ev.clientX;
       ly = ev.clientY;
-      el.setPointerCapture(ev.pointerId);
+      try {
+        el.setPointerCapture(ev.pointerId);
+      } catch {
+        /* pointer no longer active */
+      }
     };
     const pm = (ev: PointerEvent) => {
       if (!dragging) return;
