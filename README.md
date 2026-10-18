@@ -27,7 +27,7 @@ ReSpace Studio is an AI-assisted interior concept-design workspace for architect
 
 ## Requirements (Windows)
 - Python 3.12 (`py -3.12`)
-- Node.js 22 and npm
+- Node.js 22 (22.22 or newer recommended; some test-only packages warn on older 22.x) and npm
 - Optional: a Google Gemini API key from Google AI Studio (free tier)
 
 ## Setup

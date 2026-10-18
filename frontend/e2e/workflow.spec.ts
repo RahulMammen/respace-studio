@@ -232,3 +232,16 @@ test("9. presentation, history and compare open without errors", async () => {
   await page.keyboard.press("Escape");
   expect(errors).toEqual([]);
 });
+
+test("10. design summary and furniture schedule render", async () => {
+  const href = await page.getByRole("link", { name: "Summary" }).getAttribute("href");
+  expect(href).toBeTruthy();
+  await page.goto(href!);
+  await expect(page.getByRole("heading", { name: "Furniture schedule" })).toBeVisible();
+  await expect(page.getByText("Approximate concept envelopes", { exact: false })).toBeVisible();
+  await expect(page.locator("table tbody tr").first()).toBeVisible();
+  const csv = page.waitForEvent("download");
+  await page.getByRole("button", { name: /Schedule CSV/ }).click();
+  const text = readFileSync((await (await csv).path())!, "utf-8");
+  expect(text.split("\n")[0]).toContain("Width m");
+});

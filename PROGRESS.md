@@ -27,8 +27,8 @@ Stage B in progress. Plan approved 2026-10-18 (see `BUILD_SPEC.md` section 0).
 
 ## Verification so far
 - `backend`: ruff, ruff format, mypy clean; pytest 83 passed (test-double AI only).
-- `frontend`: eslint clean; tsc clean; vitest 7 passed; vite build OK.
-- Playwright: 9 workflow steps passed locally (register, PDF import, calibrate 10.0 mm/px, trace 20.0 m²,
+- `frontend`: eslint clean; tsc clean; vitest 12 passed; vite build OK.
+- Playwright: 10 workflow steps passed locally (register, PDF import, calibrate 10.0 mm/px, trace 20.0 m²,
   door, confirm, furnish, generate with test double, rendered-bounds check, manual edit, lock, undo/redo,
   chat edit with locked sofa preserved, reload, PNG + JSON export, feedback, history/compare/presentation).
 - LAN mode (2026-10-18): served on 0.0.0.0:8010; via http://192.168.68.106:8010 same-origin sign-in worked,
@@ -40,5 +40,8 @@ Stage B in progress. Plan approved 2026-10-18 (see `BUILD_SPEC.md` section 0).
 ## Blockers
 - Live AI verification blocked until `GEMINI_API_KEY` is set in `backend/.env`.
 
+- Fresh clone (2026-10-18): `scripts/setup.ps1` exit 0, backend tests exit 0, build OK.
+- CI: `1bb68d5` and `5d561ac` green (backend, frontend, e2e).
+
 ## Next action
-- Fresh-clone verification; CI confirmation; live AI checks once the key is added; HANDOFF.md.
+- Add `GEMINI_API_KEY` to `backend/.env`, then run the live checks listed in `HANDOFF.md` and record results.
