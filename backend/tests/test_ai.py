@@ -499,3 +499,35 @@ def test_repair_timeout_keeps_initial_proposals(client):
     alt = r.json()["alternatives"][0]
     assert alt["validation_status"] == "invalid"
     assert any("repair stopped" in n for n in alt["notes"])
+
+
+def test_gemini_adapter_parses_generate_content_responses():
+    from types import SimpleNamespace
+
+    from app.ai.provider import AIInvalidOutput
+
+    provider = GeminiProvider(api_key="test-key-not-real", model="m", timeout=5, max_retries=0)
+
+    def fake(text, finish="STOP"):
+        async def gen(**kw):
+            assert kw["config"].response_json_schema == {"type": "object"}
+            return SimpleNamespace(
+                text=text,
+                candidates=[SimpleNamespace(finish_reason=finish)],
+                usage_metadata=SimpleNamespace(
+                    prompt_token_count=3, candidates_token_count=2, thoughts_token_count=7, total_token_count=12
+                ),
+            )
+
+        return SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(generate_content=gen)))
+
+    req = StructuredRequest(task="t", system="s", text="x", schema={"type": "object"})
+
+    async def run(client):
+        provider._client_for_loop = lambda: client  # type: ignore[method-assign]
+        return await provider.generate_structured(req)
+
+    ok = asyncio.run(run(fake('{"a": 1}')))
+    assert ok.text == '{"a": 1}' and ok.usage["thought_tokens"] == 7
+    with pytest.raises(AIInvalidOutput):
+        asyncio.run(run(fake('{"a"', "FinishReason.MAX_TOKENS")))

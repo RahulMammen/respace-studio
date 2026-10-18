@@ -1,9 +1,8 @@
-"""Google Gemini adapter using the official ``google-genai`` SDK (Interactions API)."""
+"""Google Gemini adapter using the official ``google-genai`` SDK (generate_content, JSON schema)."""
 
 from __future__ import annotations
 
 import asyncio
-import base64
 import logging
 import random
 import re
@@ -79,19 +78,15 @@ class GeminiProvider:
         self._timeout = timeout
         self._max_retries = max_retries
 
-    def _build_input(self, request: StructuredRequest) -> list[dict[str, Any]]:
-        parts: list[dict[str, Any]] = [{"type": "text", "text": request.text}]
-        for image in request.images:
-            parts.append(
-                {
-                    "type": "image",
-                    "data": base64.b64encode(image.data).decode("ascii"),
-                    "mime_type": image.mime_type,
-                }
-            )
-        return parts
+    def _contents(self, request: StructuredRequest) -> list[Any]:
+        from google.genai import types
 
-    def _client_for_loop(self):
+        parts: list[Any] = [types.Part.from_text(text=request.text)]
+        for image in request.images:
+            parts.append(types.Part.from_bytes(data=image.data, mime_type=image.mime_type))
+        return [types.Content(role="user", parts=parts)]
+
+    def _client_for_loop(self) -> Any:
         """The SDK's async HTTP client is bound to an event loop; rebuild it per loop."""
 
         loop = asyncio.get_running_loop()
@@ -103,44 +98,49 @@ class GeminiProvider:
         return self._client
 
     async def _call_once(self, request: StructuredRequest) -> StructuredResponse:
+        # generate_content is used rather than the Interactions API: during live testing
+        # (2026-10-18) the Interactions endpoint hung on an exhausted free-tier quota,
+        # while generate_content returned HTTP 429 immediately.
+        from google.genai import types
+
         client = self._client_for_loop()
-        interaction = await asyncio.wait_for(
-            client.aio.interactions.create(
-                model=self.model,
-                system_instruction=request.system,
-                input=self._build_input(request),
-                response_format={
-                    "type": "text",
-                    "mime_type": "application/json",
-                    "schema": request.schema,
-                },
-                response_mime_type="application/json",
-                generation_config={
-                    "max_output_tokens": request.max_output_tokens,
-                    "temperature": request.temperature,
-                    "thinking_level": request.thinking,
-                },
-                store=False,
-                timeout=request.timeout_s or self._timeout,
-            ),
-            timeout=(request.timeout_s or self._timeout) + 5,
+        timeout = request.timeout_s or self._timeout
+        config = types.GenerateContentConfig(
+            system_instruction=request.system,
+            response_mime_type="application/json",
+            response_json_schema=request.schema,
+            max_output_tokens=request.max_output_tokens,
+            temperature=request.temperature,
+            thinking_config=types.ThinkingConfig(thinking_level=request.thinking),
+            http_options=types.HttpOptions(timeout=int(timeout * 1000)),
         )
-        status = getattr(interaction, "status", "completed")
-        if status in ("incomplete", "budget_exceeded"):
-            # Usually the output limit was reached (thinking tokens count toward it).
-            raise AIInvalidOutput(f"response truncated (status={status})")
-        if status in ("failed", "cancelled"):
-            raise AIError(f"provider status {status}")
-        text = getattr(interaction, "output_text", None) or ""
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(model=self.model, contents=self._contents(request), config=config),
+            timeout=timeout + 5,
+        )
+        candidates = getattr(response, "candidates", None) or []
+        finish = str(getattr(candidates[0], "finish_reason", "") or "") if candidates else ""
+        if "MAX_TOKENS" in finish:
+            # Thinking tokens count toward the output limit.
+            raise AIInvalidOutput("response truncated at the output limit")
+        if any(word in finish for word in ("SAFETY", "BLOCKLIST", "PROHIBITED", "RECITATION")):
+            raise AIBlocked(finish)
+        text = getattr(response, "text", None) or ""
         if not text.strip():
-            raise AIBlocked("empty response")
+            feedback = getattr(response, "prompt_feedback", None)
+            raise AIBlocked(f"empty response {feedback or finish}".strip())
         usage: dict[str, int] = {}
-        raw_usage = getattr(interaction, "usage", None)
-        if raw_usage is not None:
-            for key in ("total_input_tokens", "total_output_tokens", "total_thought_tokens", "total_tokens"):
-                value = getattr(raw_usage, key, None)
+        meta = getattr(response, "usage_metadata", None)
+        if meta is not None:
+            for src, dst in (
+                ("prompt_token_count", "input_tokens"),
+                ("candidates_token_count", "output_tokens"),
+                ("thoughts_token_count", "thought_tokens"),
+                ("total_token_count", "total_tokens"),
+            ):
+                value = getattr(meta, src, None)
                 if isinstance(value, int):
-                    usage[key] = value
+                    usage[dst] = value
         return StructuredResponse(text=text, model=self.model, usage=usage)
 
     async def generate_structured(self, request: StructuredRequest) -> StructuredResponse:

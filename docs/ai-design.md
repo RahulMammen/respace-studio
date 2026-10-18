@@ -1,7 +1,7 @@
 # AI generation, validation, repair and editing
 
 ## Provider
-- **Google Gemini API** through the official `google-genai` SDK (Interactions API). The default model is `gemini-3.8-flash`, which was stable, on the free tier, accepted image input and supported JSON-schema output on 2026-10-18. Set `GEMINI_MODEL` to change it. ReSpace never downgrades the model or switches provider on its own.
+- **Google Gemini API** through the official `google-genai` SDK (`models.generate_content` with `response_json_schema`). The default model is `gemini-3.8-flash`, which was stable, on the free tier, accepted image input and supported JSON-schema output on 2026-10-18. Set `GEMINI_MODEL` to change it. ReSpace never downgrades the model or switches provider on its own.
 - `app/ai/provider.py` defines `DesignModelProvider.generate_structured(StructuredRequest) -> StructuredResponse`. Adding another provider means writing one adapter.
 - `app/ai/mock.py` is a deterministic **test double** used only when `AI_PROVIDER=mock` (CI and Playwright). The API and UI label it "Test double". It does not count as live AI verification.
 - Errors are mapped to product messages: not configured (503), key or permission (`ai_auth`), unavailable model, quota or rate limit (429), timeout (504), invalid output, blocked. Only timeouts and 5xx are retried (at most `AI_MAX_RETRIES`, default 2, with backoff). Quota errors are not retried, because retrying would spend the remaining free-tier allowance.
