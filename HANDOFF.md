@@ -11,7 +11,7 @@ Tested library versions: FastAPI 0.143.3, Pydantic 2.14.1, SQLAlchemy 2.1.5, Ale
 |---|---|
 | `ruff check`, `ruff format --check` (backend) | clean |
 | `mypy app` | no issues in 33 files |
-| `pytest` | **87 passed**. AI paths use provider test doubles. |
+| `pytest` | **95 passed**. AI paths use provider test doubles. |
 | `eslint .`, `tsc -b` (frontend) | clean |
 | `vitest run` | **12 passed**: shared geometry fixtures, rendered-box transform, overlap and self-intersection, undo/redo save queue, stale detection, API client CSRF and errors |
 | `vite build` | OK |
@@ -35,41 +35,65 @@ What the backend tests cover:
 
 The browser workflows cover: register; create a project; import a PDF page; calibrate (1 px = 10.0 mm); trace (20.0 m²); add a door; confirm; set furniture and brief; generate three proposals (test double, labelled); check that rendered meshes stay inside validated footprints; edit manually; lock; undo/redo; make a chat edit where the locked sofa is preserved; reload persistence; PNG and JSON export; feedback; history, compare and presentation; summary and schedule CSV.
 
-## Live AI verification (gemini-3.8-flash, free tier, 2026-10-18)
-The key is configured. All runs used synthetic sample projects in a throwaway data directory, with bounded calls (`backend/scripts/live_ai_check.py`). Paid billing was never enabled.
+## Live AI verification (gemini-3.8-flash, Gemini free tier)
+The key is configured in `backend/.env`. All live runs used synthetic sample projects. Paid billing was never enabled.
 
+**Overall status: INCOMPLETE.** Not every required live check has passed. The free-tier quota limits this project to **20 generate requests per day for this model** (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`, from the sanitized 429 details). On 2026-10-18 the quota was used up by the first, unbounded live runs. The provider reported a retry delay of 61,899 s, about 17 h, measured at 06:43 UTC.
+
+### Results recorded on 2026-10-18 (first live session)
 | Check | Result |
 |---|---|
-| Smoke (`python -m app.ai.smoke`) | **Passed.** Valid structured JSON in 16.3 s; 70 input, 59 output and 342 thinking tokens. The placement was inside the room, but the rotation was 0 for "facing north", which is wrong under our convention. The smoke prompt does not explain the convention; the generation prompts do. |
-| First smoke attempt | **Failed and fixed.** The reply was truncated (`{"x": 2.0`) because thinking tokens count toward `max_output_tokens`. Truncation is now detected and the thinking level is set per task. |
-| Live generation, warm living room, 3 proposals | **Ran:** 3 calls (1 generation and 2 batched repairs), 134 s, about 21.5k tokens. Each proposal had 7 objects with no conversion errors and stayed inside the room without collisions. **All 3 stayed invalid after 2 repairs, on one check only: furniture reachability.** Proposal status was reported honestly as "Needs attention". |
-| Locked sofa, asked "Move the sofa 50 cm towards the window" | **Passed.** The model replied that the position is locked, returned no move operation, and listed a conflict. The sofa's position, rotation, size and locks were identical in the proposal. |
-| Locked sofa, "Try another arrangement using the same required inventory" | **Passed for locks.** Intent was rearrange; 72 s; the chairs, lamp and bookshelf moved. The sofa's position, rotation, size and locks were preserved. The result still failed the old reachability rule. |
-| Spec revision request (lighter chairs, pale oak floor, warm accents, sofa locked) and "Make the lighting warmer" | **Not verified.** Both calls failed instantly with `RuntimeError: Event loop is closed` (the SDK client was reused across event loops). This is fixed, but the requests have not been re-run live. |
-| Outline extraction (study sample) | **Not verified.** It failed with the same event-loop bug; after the fix, the quota was exhausted before a re-run. |
-| Visual review with a real canvas screenshot | **Not verified** (quota). A manual spec is ready: `LIVE_AI=1 npx playwright test live-review`. |
-| Quota handling | **Verified live.** After about 20 calls, the free-tier quota was exhausted. The Interactions endpoint hung until timeout (users would see "took too long"). The adapter now uses `generate_content`, which returns HTTP 429 at once, and the app reports "rate limit or free-tier quota was reached". |
+| Smoke, first attempt | **Failed and fixed.** The reply was truncated (`{"x": 2.0`) because thinking tokens count toward the output limit. Truncation is now detected, and the thinking level is set per task. |
+| Smoke, second attempt | Valid JSON in 16.3 s, 471 tokens. **Wrong orientation**: rotation 0 for "facing north", where 180 is correct. That prompt did not explain the convention. The smoke test now explains it and fails on a wrong position or orientation (unit-tested); this stricter version has not run live yet. |
+| Generation, warm living room, 3 proposals (old rule: one 0.9 m width) | 3 calls (1 generation and 2 batched repairs), 134 s, about 21.5k tokens. Each proposal had 7 objects, no conversion errors, and stayed inside the room with no collisions. All 3 stayed invalid on one check, furniture reachability, and were labelled "Needs attention". This led to the circulation change below. |
+| Locked sofa, "Move the sofa 50 cm towards the window" | **Pass.** No move operation; the conflict "position is locked" was reported; the sofa was identical in the proposal. |
+| Locked sofa, "Try another arrangement using the same required inventory" | **Pass for locks.** Intent was rearrange, 72 s. Other furniture moved; the sofa's position, rotation, size and locks were unchanged. The layout still failed the old reachability rule. |
+| Combined revision, "Make the lighting warmer", outline extraction | Not run successfully. They failed instantly with `RuntimeError: Event loop is closed`, an SDK client lifecycle bug that is now fixed. |
+| Quota handling | **Verified live.** Once the quota was used up, the Interactions endpoint hung until timeout. The adapter now uses `generate_content`: a 429 comes back immediately, and the app reports, for example, "The AI provider's daily free-tier request limit (20) is used up. Try again in about 17 h 0 min." Per-minute limits get a separate message (unit-tested). |
+| Bounded verifier, 2026-10-18 06:56 UTC | `scripts/live_ai_check.py --reset` exited **3 (INCOMPLETE)**. Smoke was INCOMPLETE on the daily quota; 1 of 8 budget units was used; the remaining checks were not started. |
 
-Fixes made because of the live runs (all tested; 87 backend tests):
-- the client is bound to the current event loop;
-- thinking level is set per task, and truncation is detected;
-- provider errors are classified precisely, with a key-free excerpt;
-- generated proposals are kept when a repair call fails or times out;
-- the adapter uses `generate_content` so quota errors appear promptly;
-- repair prompts include per-check hints;
-- walkway rule: the main walkway width (0.9 m) applies between doors, and a separate furniture access width (0.6 m, configurable) applies to reaching furniture. Seats can be approached beside their front edge. The rule and its rationale are in `docs/geometry.md`.
+### Still required (all INCOMPLETE)
+| Required check | Status |
+|---|---|
+| Smoke with orientation check | INCOMPLETE (quota) |
+| Generation under the revised circulation rules (0.9 m between doors, 0.6 m access) | INCOMPLETE (quota) |
+| Combined revision with the sofa locked: floor becomes pale oak; accent lights on; chairs lighter; no furniture moved; sofa unchanged; no new errors; applies cleanly | INCOMPLETE (quota) |
+| "Make the lighting warmer": lighting warmer, no furniture or finish changes | INCOMPLETE (quota) |
+| Outline extraction on the study sample: room within 0.2 m of the drawn outline, at least one opening, nothing applied automatically | INCOMPLETE (quota) |
+| Browser visual review of a real canvas screenshot: summary, grounded observations, no URLs or prices | INCOMPLETE (quota) |
 
-**Outstanding:**
-- live generation re-run under the new access rule;
-- the spec revision request and the lighting edit;
-- outline extraction;
-- visual review.
-
-These need the free-tier quota to reset (daily limits reset at midnight Pacific time). Run:
+### How to finish (one sequential run, at most 8 attempts in total)
+After the daily quota resets:
 ```powershell
-cd backend; .venv\Scripts\python scripts\live_ai_check.py
-cd ..rontend; $env:LIVE_AI=1; npx playwright test live-review
+cd backend
+.venv\Scripts\python scripts\live_ai_check.py --reset
+cd ..\frontend
+$env:LIVE_AI = "1"; $env:AI_CALL_BUDGET = "8"; $env:AI_BUDGET_FILE = "$PWD\..\backend\data\live-run\ai-budget.json"
+npx playwright test live-review
 ```
+- **Budget.** Every outbound attempt, including repairs and retries, takes one unit from `backend/data/live-run/ai-budget.json` before it is sent. The SDK's own HTTP retries are disabled, so they cannot bypass the count.
+- **Split.** The script may use at most 7 attempts; the browser review uses the 8th. The run uses one repair round to stay inside the budget.
+- **Results.** They go to `backend/data/live-run/results.json` and `review.json`, which Git ignores. A rerun without `--reset` reuses checks that already passed.
+- **Exit codes.** The script exits 0 only if every check passes, 1 if any check fails, and 3 if any check is incomplete.
+
+### Fixes made because of the live runs
+- The SDK client is bound to the running event loop.
+- Thinking level is set per task, and truncated replies are detected.
+- Errors are classified precisely with a key-free excerpt. Quota errors now distinguish daily from per-minute limits, using Google's QuotaFailure and RetryInfo details.
+- Proposals are kept when a repair call fails or times out.
+- The adapter uses `generate_content`, so quota errors appear immediately.
+- Repair prompts include per-check hints.
+- An optional shared call budget (`AI_CALL_BUDGET`, `AI_BUDGET_FILE`) is available for verification runs.
+- **Circulation (accepted by the owner as a configurable concept-design heuristic).**
+  - The main walkway between doors defaults to 0.9 m. A furniture access path defaults to 0.6 m and can never be wider than the walkway.
+  - A seat can be reached beside its front edge.
+  - Both values are visible and editable in Furnish → Circulation.
+  - Saved project values are never rewritten. A project saved before this change reads the 0.6 m default without storing it, which is covered by a test.
+  - The UI and docs state that these are not accessibility or building-code checks.
+  - Regression tests show:
+    - side approach to a seat passes;
+    - an enclosed seat, and a seat facing a wall, still fail;
+    - a door-to-door route narrower than the configured main width fails, and passes only when the width is reduced.
 
 ## LAN verification (2026-10-18)
 `python -m app.serve --lan --port 8010`, accessed from `http://192.168.68.106:8010`:
@@ -95,7 +119,7 @@ Screenshots in `docs/screenshots/` were taken from the running app with Playwrig
 - Before each push, author, committer and the full message of each commit were inspected. None contains a Co-Authored-By trailer, generated byline or session link.
 
 ## Not done or not verified
-- Live AI checks (blocked on the key).
+- Live AI checks listed above as INCOMPLETE (daily free-tier quota).
 - A test session with a real architect. The guide is ready: `docs/testing-guide.md`.
 - Hosted deployment. It needs an account, HTTPS and your approval: `docs/deployment.md`.
 - No licence file has been added. Choosing a licence for the public repository is your decision.

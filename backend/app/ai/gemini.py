@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 
+from .budget import AIBudgetExhausted, CallBudget
 from .provider import (
     AIAuthError,
     AIBlocked,
@@ -31,6 +32,9 @@ def classify_error(exc: BaseException) -> AIError:
 
     if isinstance(exc, AIError):
         return exc
+    quota = _quota_info(exc)
+    if quota is not None:
+        return quota
     if isinstance(exc, (httpx.TimeoutException, asyncio.TimeoutError, TimeoutError)):
         return AITimeout()
     status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
@@ -48,6 +52,44 @@ def classify_error(exc: BaseException) -> AIError:
             return AIError(f"provider server error {status}: {excerpt}")
         return AIError(f"provider request error {status}: {excerpt}")
     return AIError(type(exc).__name__)
+
+
+def _quota_info(exc: BaseException) -> AIQuotaExceeded | None:
+    """Read Google's QuotaFailure/RetryInfo details to tell daily from per-minute limits."""
+
+    details = getattr(exc, "details", None)
+    if not isinstance(details, dict):
+        return None
+    error = details.get("error", details)
+    if not isinstance(error, dict) or error.get("status") != "RESOURCE_EXHAUSTED":
+        return None
+    quota_id, limit, retry = "", "", ""
+    for item in error.get("details", []) or []:
+        kind = str(item.get("@type", ""))
+        if kind.endswith("QuotaFailure"):
+            for v in item.get("violations", []) or []:
+                quota_id = str(v.get("quotaId", "")) or quota_id
+                limit = str(v.get("quotaValue", "")) or limit
+        elif kind.endswith("RetryInfo"):
+            retry = str(item.get("retryDelay", ""))
+    seconds = int(float(retry.rstrip("s"))) if retry.rstrip("s").replace(".", "", 1).isdigit() else None
+    wait = ""
+    if seconds is not None:
+        wait = (
+            f" Try again in about {seconds // 3600} h {seconds % 3600 // 60} min."
+            if seconds >= 3600
+            else (
+                f" Try again in about {max(1, seconds // 60)} min." if seconds >= 60 else f" Try again in {seconds} s."
+            )
+        )
+    err = AIQuotaExceeded(f"{quota_id or 'quota'} limit={limit or '?'} retry={retry or '?'}")
+    if "PerDay" in quota_id:
+        err.user_message = f"The AI provider's daily free-tier request limit ({limit or '?'}) is used up.{wait}"
+    elif "PerMinute" in quota_id:
+        err.user_message = f"The AI provider's per-minute rate limit was reached.{wait or ' Wait a minute and retry.'}"
+    else:
+        err.user_message = AIQuotaExceeded.user_message + wait
+    return err
 
 
 def _sanitize(text: str) -> str:
@@ -68,7 +110,9 @@ class GeminiProvider:
     name = "gemini"
     is_test_double = False
 
-    def __init__(self, api_key: str, model: str, timeout: float, max_retries: int) -> None:
+    def __init__(
+        self, api_key: str, model: str, timeout: float, max_retries: int, budget: CallBudget | None = None
+    ) -> None:
         if not api_key:
             raise AINotConfigured()
         self._api_key = api_key
@@ -77,6 +121,7 @@ class GeminiProvider:
         self.model = model
         self._timeout = timeout
         self._max_retries = max_retries
+        self._budget = budget
 
     def _contents(self, request: StructuredRequest) -> list[Any]:
         from google.genai import types
@@ -92,8 +137,13 @@ class GeminiProvider:
         loop = asyncio.get_running_loop()
         if self._client is None or self._loop is not loop:
             from google import genai  # imported lazily so tests never need network
+            from google.genai import types
 
-            self._client = genai.Client(api_key=self._api_key)
+            # SDK-level HTTP retries are disabled: retries are counted and bounded here.
+            self._client = genai.Client(
+                api_key=self._api_key,
+                http_options=types.HttpOptions(retry_options=types.HttpRetryOptions(attempts=1)),
+            )
             self._loop = loop
         return self._client
 
@@ -103,6 +153,8 @@ class GeminiProvider:
         # while generate_content returned HTTP 429 immediately.
         from google.genai import types
 
+        if self._budget is not None:
+            self._budget.consume(request.task)  # every outbound attempt, before sending
         client = self._client_for_loop()
         timeout = request.timeout_s or self._timeout
         config = types.GenerateContentConfig(
@@ -160,4 +212,4 @@ class GeminiProvider:
                 await asyncio.sleep(min(8.0, 1.5**attempt + random.random()))  # noqa: S311
 
 
-__all__ = ["GeminiProvider", "classify_error", "AIInvalidOutput"]
+__all__ = ["GeminiProvider", "classify_error", "AIInvalidOutput", "AIBudgetExhausted"]

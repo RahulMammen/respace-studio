@@ -111,3 +111,34 @@ def test_seat_reachable_from_the_side_of_its_front():
         obj("chair-1", "armchair", 1.15, 2.0, 0.8, 0.8, rot=270, material="linen"),
     )
     assert "furniture_unreachable" not in codes(validate_scene(g, inventory(), s))
+
+
+def test_enclosed_seat_still_fails_with_side_approach():
+    # The chair sits in a pocket closed by a wardrobe in front and a shelf at its side:
+    # the lateral-approach rule must not make genuinely blocked furniture pass.
+    g = geometry(rect_room(5, 4, openings=[door(wall=0, offset=1.0)]))
+    s = scene(
+        obj("wardrobe-1", "wardrobe", 4.3, 2.7, 1.4, 0.6, h=2.1),
+        obj("shelf-1", "bookshelf", 3.775, 3.2, 1.6, 0.35, h=1.9, rot=90),
+        obj("chair-1", "armchair", 4.5, 3.5, 0.8, 0.8, rot=180, material="linen"),
+    )
+    report = validate_scene(g, inventory(), s)
+    assert "furniture_unreachable" in codes(report)
+    assert "chair-1" in walkway(report)["unreached_objects"]
+
+
+def test_seat_facing_a_wall_fails():
+    g = geometry(rect_room(5, 4, openings=[door(wall=0, offset=1.0)]))
+    s = scene(obj("chair-1", "armchair", 2.5, 3.55, 0.8, 0.8, rot=0, material="linen"))
+    assert "furniture_unreachable" in codes(validate_scene(g, inventory(), s))
+
+
+def test_door_route_follows_configured_main_width():
+    room = rect_room(5, 4, openings=[door(wall=0, offset=1.0), door(wall=2, offset=1.0, entrance=False, oid="door-2")])
+    s = scene(
+        obj("wardrobe-1", "wardrobe", 1.5, 2.0, 3.0, 0.6, h=2.1),
+        obj("shelf-1", "bookshelf", 4.375, 2.0, 1.25, 0.35, h=1.9),
+    )  # 0.75 m gap between the two doors
+    assert "door_unreachable" in codes(validate_scene(geometry(room), inventory(clearance=0.9), s))
+    assert "door_unreachable" in codes(validate_scene(geometry(room), inventory(clearance=0.8), s))
+    assert "door_unreachable" not in codes(validate_scene(geometry(room), inventory(clearance=0.7), s))

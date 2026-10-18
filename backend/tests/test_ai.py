@@ -531,3 +531,88 @@ def test_gemini_adapter_parses_generate_content_responses():
     assert ok.text == '{"a": 1}' and ok.usage["thought_tokens"] == 7
     with pytest.raises(AIInvalidOutput):
         asyncio.run(run(fake('{"a"', "FinishReason.MAX_TOKENS")))
+
+
+def _quota_exc(quota_id, retry):
+    class E(Exception):
+        code = 429
+        details = {
+            "error": {
+                "code": 429,
+                "status": "RESOURCE_EXHAUSTED",
+                "message": "quota",
+                "details": [
+                    {
+                        "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                        "violations": [{"quotaId": quota_id, "quotaValue": "20"}],
+                    },
+                    {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": retry},
+                ],
+            }
+        }
+
+    return E("quota")
+
+
+def test_quota_details_distinguish_daily_and_per_minute_limits():
+    daily = classify_error(_quota_exc("GenerateRequestsPerDayPerProjectPerModel-FreeTier", "61899s"))
+    assert isinstance(daily, AIQuotaExceeded)
+    assert "daily free-tier request limit (20)" in daily.user_message and "17 h 11 min" in daily.user_message
+    minute = classify_error(_quota_exc("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "38s"))
+    assert "per-minute" in minute.user_message and "38 s" in minute.user_message
+
+
+def test_call_budget_counts_every_attempt_including_retries(tmp_path, monkeypatch):
+    from app.ai.budget import AIBudgetExhausted, CallBudget
+
+    budget = CallBudget(tmp_path / "budget.json", 3)
+    provider = GeminiProvider(api_key="test-key-not-real", model="m", timeout=1, max_retries=5, budget=budget)
+    sent = {"n": 0}
+
+    class E(Exception):
+        status_code, body = 503, ""
+
+    class FakeModels:
+        async def generate_content(self, **kw):
+            sent["n"] += 1
+            raise E()
+
+    from types import SimpleNamespace
+
+    provider._client_for_loop = lambda: SimpleNamespace(aio=SimpleNamespace(models=FakeModels()))  # type: ignore[method-assign]
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr("app.ai.gemini.asyncio.sleep", lambda s: real_sleep(0))
+    req = StructuredRequest(task="t", system="s", text="x", schema={})
+    with pytest.raises(AIBudgetExhausted):
+        asyncio.run(provider.generate_structured(req))
+    assert sent["n"] == 3 and budget.used() == 3  # retries could not exceed the shared budget
+    # a second process sharing the file is refused before sending anything
+    other = GeminiProvider(
+        api_key="test-key-not-real", model="m", timeout=1, max_retries=0, budget=CallBudget(budget.path, 3)
+    )
+    other._client_for_loop = provider._client_for_loop  # type: ignore[method-assign]
+    with pytest.raises(AIBudgetExhausted):
+        asyncio.run(other.generate_structured(req))
+    assert sent["n"] == 3
+
+
+def test_sdk_http_retries_are_disabled():
+    provider = GeminiProvider(api_key="test-key-not-real", model="m", timeout=1, max_retries=0)
+
+    async def build():
+        return provider._client_for_loop()
+
+    client = asyncio.run(build())
+    opts = client._api_client._http_options
+    assert opts.retry_options is not None and opts.retry_options.attempts == 1
+
+
+def test_smoke_checks_orientation_not_just_json():
+    from app.ai.smoke import SYSTEM, SmokePlacement, check
+
+    assert "at 180 it faces north" in SYSTEM
+    assert check(SmokePlacement(x=2.0, y=4.55, rotation_deg=180, reason="ok")) == []
+    assert check(SmokePlacement(x=2.0, y=4.55, rotation_deg=-180, reason="ok")) == []
+    wrong = check(SmokePlacement(x=2.0, y=4.55, rotation_deg=0, reason="faces the wall"))
+    assert wrong and "rotation_deg=0" in wrong[0]
+    assert check(SmokePlacement(x=2.0, y=0.45, rotation_deg=180, reason="north wall"))

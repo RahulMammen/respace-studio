@@ -185,10 +185,19 @@ export default function FurnishStep() {
           </form>
         </section>
         <section className="panel-section">
-          <h3>Circulation</h3>
-          <p className="muted small">The main walkway must connect all doors. A narrower access path must reach each piece of furniture from the entrance.</p>
+          <div className="panel-title">
+            <h3>Circulation</h3>
+            {(inventory.walkway_clearance_m !== 0.9 || (inventory.access_clearance_m ?? 0.6) !== 0.6) && (
+              <button className="btn sm ghost" onClick={() => setInventory({ ...inventory, walkway_clearance_m: 0.9, access_clearance_m: 0.6 })}>
+                Reset to defaults
+              </button>
+            )}
+          </div>
+          <p className="muted small">
+            Concept-design heuristic: the main walkway must connect all doors, and a narrower access path must reach each piece of furniture from the entrance. Defaults: 0.90 m main walkway, 0.60 m access. These are not accessibility or building-code checks.
+          </p>
           <label className="field">
-            <span>Main walkway width</span>
+            <span>Main walkway between doors <span className="muted">(default 0.90 m)</span></span>
             <div className="range-row">
               <input
                 type="range"
@@ -203,7 +212,7 @@ export default function FurnishStep() {
             </div>
           </label>
           <label className="field">
-            <span>Access path to furniture</span>
+            <span>Access path to furniture <span className="muted">(default 0.60 m)</span></span>
             <div className="range-row">
               <input
                 type="range"
@@ -217,6 +226,9 @@ export default function FurnishStep() {
               <strong className="num">{(inventory.access_clearance_m ?? 0.6).toFixed(2)} m</strong>
             </div>
           </label>
+          {(inventory.access_clearance_m ?? 0.6) > inventory.walkway_clearance_m && (
+            <p className="small warn-text">The access path is used at {inventory.walkway_clearance_m.toFixed(2)} m because it cannot be wider than the main walkway.</p>
+          )}
         </section>
         <section className="panel-section">
           <h3>Reference images</h3>

@@ -29,11 +29,17 @@ def get_provider() -> DesignModelProvider:
         raise AINotConfigured()
     from .gemini import GeminiProvider
 
+    budget = None
+    if settings.ai_call_budget > 0:
+        from .budget import CallBudget
+
+        budget = CallBudget(settings.ai_budget_file or settings.data_dir / "ai-budget.json", settings.ai_call_budget)
     return GeminiProvider(
         api_key=settings.gemini_api_key.get_secret_value().strip(),
         model=settings.gemini_model,
         timeout=settings.ai_timeout_seconds,
         max_retries=settings.ai_max_retries,
+        budget=budget,
     )
 
 

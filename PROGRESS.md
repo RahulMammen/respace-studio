@@ -38,10 +38,10 @@ Stage B in progress. Plan approved 2026-10-18 (see `BUILD_SPEC.md` section 0).
   mobile header overlap, missing accessible names, eager PDF chunk.
 
 ## Blockers
-- Live AI verification blocked until `GEMINI_API_KEY` is set in `backend/.env`.
+- Live AI verification INCOMPLETE: the Gemini free-tier daily quota (20 requests per model) was used up on 2026-10-18; see `HANDOFF.md`.
 
 - Fresh clone (2026-10-18): `scripts/setup.ps1` exit 0, backend tests exit 0, build OK.
 - CI: `1bb68d5` and `5d561ac` green (backend, frontend, e2e).
 
 ## Next action
-- Add `GEMINI_API_KEY` to `backend/.env`, then run the live checks listed in `HANDOFF.md` and record results.
+- After the daily quota resets, run `scripts/live_ai_check.py --reset`, then the `live-review` spec (8 attempts in total), and record the outcomes in `HANDOFF.md`.

@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     ai_timeout_seconds: float = 90.0
     ai_max_retries: int = 2
     ai_max_repair_rounds: int = 2
+    # Manual live verification only: hard cap on outbound model calls (0 = off),
+    # counted in a file so separate processes share it.
+    ai_call_budget: int = 0
+    ai_budget_file: Path | None = None
 
     session_secret: SecretStr = SecretStr("")
     session_days: int = 14

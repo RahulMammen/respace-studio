@@ -371,3 +371,32 @@ def test_security_headers_present(client):
     assert r.headers["x-content-type-options"] == "nosniff"
     assert r.headers["x-frame-options"] == "DENY"
     assert r.headers["cache-control"] == "no-store"
+
+
+def test_saved_circulation_settings_are_never_overwritten(client):
+    """Legacy inventories without access_clearance_m read as the default without being rewritten."""
+
+    from sqlalchemy.orm import Session
+
+    from app.db import Project, get_engine
+
+    client.register("circ@example.com")
+    pid = make_confirmed_project(client)
+    legacy = {"items": INVENTORY["items"], "walkway_clearance_m": 1.1}
+    with Session(get_engine()) as db:
+        db.get(Project, pid).inventory = legacy
+        db.commit()
+    detail = client.get(f"/api/projects/{pid}").json()
+    assert detail["inventory"]["walkway_clearance_m"] == 1.1
+    assert detail["inventory"]["access_clearance_m"] == 0.6  # default shown, not stored
+    client.put(f"/api/projects/{pid}/brief", json={"text": "unrelated edit"})
+    client.post(f"/api/projects/{pid}/alternatives", json={"name": "A"})
+    with Session(get_engine()) as db:
+        assert db.get(Project, pid).inventory == legacy  # untouched by other actions
+    saved = client.put(
+        f"/api/projects/{pid}/inventory", json={**INVENTORY, "walkway_clearance_m": 1.0, "access_clearance_m": 0.75}
+    )
+    assert saved.json()["access_clearance_m"] == 0.75
+    alt = client.post(f"/api/projects/{pid}/alternatives", json={"name": "B"}).json()
+    assert alt["validation"]["derived"]["access_clearance_m"] == 0.75
+    assert alt["validation"]["derived"]["clearance_m"] == 1.0
