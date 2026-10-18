@@ -55,7 +55,7 @@ interface WorkspaceState {
   setStep: (s: Step) => void;
   refreshProject: () => Promise<void>;
 
-  setGeometry: (g: Geometry) => void;
+  setGeometry: (g: Geometry, autosave?: boolean) => void;
   saveGeometry: (confirm: boolean) => Promise<boolean>;
 
   setInventory: (inv: Inventory) => void;
@@ -79,6 +79,7 @@ interface WorkspaceState {
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let geometryTimer: ReturnType<typeof setTimeout> | null = null;
 let inventoryTimer: ReturnType<typeof setTimeout> | null = null;
 let saving: Promise<void> | null = null;
 let pendingSource: "manual" | "undo" | "redo" = "manual";
@@ -147,11 +148,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   setStep: (step) => set({ step }),
 
-  setGeometry: (geometry) => set({ geometry: { ...geometry, confirmed: false }, geometrySave: "unsaved" }),
+  setGeometry: (geometry, autosave = false) => {
+    set({ geometry: { ...geometry, confirmed: false }, geometrySave: "unsaved" });
+    if (geometryTimer) clearTimeout(geometryTimer);
+    geometryTimer = autosave ? setTimeout(() => void get().saveGeometry(false), 900) : null;
+  },
 
   saveGeometry: async (confirm) => {
     const { project, geometry } = get();
     if (!project || !geometry) return false;
+    // A confirmation supersedes any pending draft autosave (which would un-confirm).
+    if (geometryTimer) clearTimeout(geometryTimer);
+    geometryTimer = null;
     set({ geometrySave: "saving" });
     try {
       const r = await api<{ geometry: Geometry; issues: Issue[] }>(`/api/projects/${project.id}/geometry`, {

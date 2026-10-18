@@ -81,7 +81,6 @@ export default function PlanStep() {
   const dragRef = useRef<{ kind: "pan" | "vertex"; startX: number; startY: number; ox: number; oy: number; roomId?: string; index?: number } | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ dist: number; scale: number; cx: number; cy: number } | null>(null);
-  const autosave = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const plan: Asset | undefined = project?.assets.find((a) => a.id === geometry?.plan_asset_id) ?? project?.assets.find((a) => a.kind === "plan");
   const mpp = geometry?.calibration ? safeMpp(geometry.calibration) : PROVISIONAL_MPP;
@@ -94,14 +93,7 @@ export default function PlanStep() {
     if (geometry && !geometry.plan_asset_id && plan) setGeometry({ ...geometry, plan_asset_id: plan.id });
   }, [geometry, plan, setGeometry]);
 
-  const update = useCallback(
-    (g: Geometry) => {
-      setGeometry(g);
-      if (autosave.current) clearTimeout(autosave.current);
-      autosave.current = setTimeout(() => void useWorkspace.getState().saveGeometry(false), 900);
-    },
-    [setGeometry],
-  );
+  const update = useCallback((g: Geometry) => setGeometry(g, true), [setGeometry]);
 
   const fit = useCallback(() => {
     const svg = svgRef.current;

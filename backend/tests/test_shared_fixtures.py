@@ -29,12 +29,22 @@ def build() -> dict:
     for rot in (0, 37.5, 90, 180, 270, 315):
         o = obj("t", "sofa", 2.0, 1.5, 2.2, 0.9, rot=rot)
         cases["footprints"].append(
-            {"x": 2.0, "y": 1.5, "w": 2.2, "d": 0.9, "rotation_deg": rot,
-             "corners": [[round(a, 6), round(b, 6)] for a, b in footprint(o)]}
+            {
+                "x": 2.0,
+                "y": 1.5,
+                "w": 2.2,
+                "d": 0.9,
+                "rotation_deg": rot,
+                "corners": [[round(a, 6), round(b, 6)] for a, b in footprint(o)],
+            }
         )
     cw = rect_room(5, 4, openings=[door(wall=0, offset=1.0, width=0.9), window(wall=1, offset=2.0, width=1.2)])
-    ccw = Room(id="r", name="R", polygon=list(reversed(cw.polygon)),
-               openings=[door(wall=3, offset=4.0, width=0.9, hinge="end"), window(wall=2, offset=2.0, width=1.2)])
+    ccw = Room(
+        id="r",
+        name="R",
+        polygon=list(reversed(cw.polygon)),
+        openings=[door(wall=3, offset=4.0, width=0.9, hinge="end"), window(wall=2, offset=2.0, width=1.2)],
+    )
     for room in (cw, ccw):
         for op in room.openings:
             a, b = opening_segment(room, op)
@@ -51,12 +61,21 @@ def build() -> dict:
     cal = Calibration(a=PlanPoint(u=120, v=80), b=PlanPoint(u=420, v=480), length_m=5.0)
     for u, v in ((0, 0), (120, 80), (420, 480), (1000, 333)):
         p = plan_to_world(PlanPoint(u=u, v=v), cal)
-        cases["calibration"].append({"calibration": cal.model_dump(mode="json"), "u": u, "v": v,
-                                     "x": round(p.x, 6), "y": round(p.y, 6)})
+        cases["calibration"].append(
+            {"calibration": cal.model_dump(mode="json"), "u": u, "v": v, "x": round(p.x, 6), "y": round(p.y, 6)}
+        )
     for x, y, elev, rot in ((1.0, 2.0, 0.0, 0), (3.5, 0.25, 1.2, 90), (0.0, 4.0, 0.4, 225)):
         tx, ty, tz = world_to_three(x, y, elev)
-        cases["three"].append({"x": x, "y": y, "elevation": elev, "rotation_deg": rot,
-                               "position": [tx, ty, tz], "rotation_y": round(rotation_to_three_y(rot), 9)})
+        cases["three"].append(
+            {
+                "x": x,
+                "y": y,
+                "elevation": elev,
+                "rotation_deg": rot,
+                "position": [tx, ty, tz],
+                "rotation_y": round(rotation_to_three_y(rot), 9),
+            }
+        )
     return cases
 
 

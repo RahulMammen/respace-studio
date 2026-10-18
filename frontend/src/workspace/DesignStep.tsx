@@ -284,13 +284,23 @@ export default function DesignStep({ onDiagnostics }: { onDiagnostics: (d: Recor
             </button>
           </div>
           {viewMode === "orbit" && (
-            <div className="seg" role="group" aria-label="Camera presets">
-              {(["corner-a", "corner-b", "entrance", "top"] as Preset[]).map((p) => (
-                <button key={p} onClick={() => viewRef.current?.preset(p)}>
-                  {{ "corner-a": "Corner", "corner-b": "Opposite", entrance: "Door", top: "Top", reset: "Reset" }[p]}
-                </button>
-              ))}
-            </div>
+            <label className="select-inline" title="Camera viewpoint">
+              <Camera size={14} />
+              <select
+                className="select"
+                aria-label="Camera viewpoint"
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) viewRef.current?.preset(e.target.value as Preset);
+                }}
+              >
+                <option value="">Viewpoint…</option>
+                <option value="corner-a">Corner</option>
+                <option value="corner-b">Opposite corner</option>
+                <option value="entrance">From the door</option>
+                <option value="top">Top-down</option>
+              </select>
+            </label>
           )}
           <button className="icon-btn" title="Reset camera (F)" aria-label="Reset camera" onClick={() => viewRef.current?.preset("reset")}>
             <RotateCcw size={16} />
@@ -315,13 +325,13 @@ export default function DesignStep({ onDiagnostics }: { onDiagnostics: (d: Recor
           <button className={`icon-btn ${prefs.showWalkway ? "" : ""}`} aria-pressed={prefs.showWalkway} title="Walkway overlay" aria-label="Toggle walkway overlay" onClick={() => prefs.set({ showWalkway: !prefs.showWalkway })}>
             <Eye size={16} />
           </button>
-          <button className="btn sm" onClick={() => void runReview()} disabled={!alt || reviewing || !aiStatus?.configured} title="Ask the assistant to review this view">
+          <button className="btn sm" onClick={() => void runReview()} disabled={!alt || reviewing || !aiStatus?.configured} title="Ask the assistant to review this view" aria-label="Review this view">
             {reviewing ? <span className="spinner" /> : <ScanEye size={14} />} <span className="hide-narrow">Review</span>
           </button>
-          <button className="btn sm" onClick={exportPng} disabled={!alt} title="Export this view as PNG" data-testid="export-png">
+          <button className="btn sm" onClick={exportPng} disabled={!alt} title="Export this view as PNG" aria-label="Export PNG" data-testid="export-png">
             <Camera size={14} /> <span className="hide-narrow">PNG</span>
           </button>
-          <button className="btn sm" onClick={() => setPresenting(true)} disabled={!alt}>
+          <button className="btn sm" onClick={() => setPresenting(true)} disabled={!alt} title="Presentation mode" aria-label="Present">
             <Presentation size={14} /> <span className="hide-narrow">Present</span>
           </button>
         </div>
@@ -378,11 +388,11 @@ export default function DesignStep({ onDiagnostics }: { onDiagnostics: (d: Recor
             </div>
           )}
           {proposal && !previewBefore && <div className="preview-flag">Preview: not applied yet</div>}
+          <button className={`chat-fab ${chatOpen ? "hidden" : ""}`} onClick={() => setChatOpen(true)} disabled={!alt} data-testid="open-chat">
+            <MessageSquare size={16} /> Ask for changes
+          </button>
+          <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
         </div>
-        <button className={`chat-fab ${chatOpen ? "hidden" : ""}`} onClick={() => setChatOpen(true)} disabled={!alt} data-testid="open-chat">
-          <MessageSquare size={16} /> Ask for changes
-        </button>
-        <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
       </section>
 
       <aside className="side-panel design-panel" aria-label="Properties">

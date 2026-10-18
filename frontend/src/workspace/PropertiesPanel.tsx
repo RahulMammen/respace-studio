@@ -195,6 +195,23 @@ export function ScenePanel() {
     <div className="props" data-testid="scene-panel">
       <section className="panel-section tight">
         <div className="panel-title">
+          <h3>Furniture</h3>
+          <span className="muted small">{scene.objects.length}</span>
+        </div>
+        <div className="object-list" role="list">
+          {scene.objects.map((o) => (
+            <button key={o.id} role="listitem" className="object-row" onClick={() => select([o.id])} data-testid={`object-${o.id}`}>
+              <Thumbnail category={o.category} size={28} />
+              <span className="truncate">{o.label || catalog.categories.find((c) => c.id === o.category)?.label}</span>
+              {o.locks.length > 0 && <Lock size={12} aria-label="Locked" />}
+              <span className="muted small num">{o.size.w.toFixed(2)} × {o.size.d.toFixed(2)}</span>
+            </button>
+          ))}
+          {!scene.objects.length && <p className="muted small">No furniture yet. Add items below or ask the assistant.</p>}
+        </div>
+      </section>
+      <section className="panel-section tight">
+        <div className="panel-title">
           <h3>Lighting</h3>
         </div>
         <div className="seg" role="group" aria-label="Lighting mood">

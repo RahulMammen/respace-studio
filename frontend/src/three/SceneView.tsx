@@ -142,6 +142,33 @@ function SceneContent(p: Props & { presetRef: React.MutableRefObject<(p: Preset)
   };
   p.presetRef.current = applyPreset;
 
+  // Opt-in diagnostics (?debug=geometry): reports each object's rendered bounds in its
+  // own frame so tests can check meshes stay inside the validated footprint box.
+  const three = useThree();
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("debug")) return;
+    (window as unknown as { __respaceBounds?: () => unknown }).__respaceBounds = () => {
+      const out: Record<string, { min: number[]; max: number[]; size: number[] }> = {};
+      three.scene.traverse((g) => {
+        const id = g.userData?.objectId;
+        if (!id || g.userData?.pick || !(g instanceof THREE.Group)) return;
+        g.updateMatrixWorld(true);
+        const inv = new THREE.Matrix4().copy(g.matrixWorld).invert();
+        const box = new THREE.Box3();
+        g.traverse((m) => {
+          const mesh = m as THREE.Mesh;
+          if (!mesh.isMesh || mesh.userData?.pick || mesh.userData?.decor || !mesh.geometry) return;
+          mesh.geometry.computeBoundingBox();
+          const bb = mesh.geometry.boundingBox!.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, mesh.matrixWorld));
+          box.union(bb);
+        });
+        const o = scene.objects.find((x) => x.id === id);
+        if (o) out[id] = { min: box.min.toArray(), max: box.max.toArray(), size: [o.size.w, o.size.h, o.size.d] };
+      });
+      return out;
+    };
+  }, [three.scene, scene.objects]);
+
   useEffect(() => {
     // Wait until the camera for this view mode is the default camera.
     const isOrtho = (camera as THREE.OrthographicCamera).isOrthographicCamera === true;

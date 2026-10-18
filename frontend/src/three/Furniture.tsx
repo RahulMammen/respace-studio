@@ -204,7 +204,7 @@ function buildBody(o: SceneObject, main: THREE.Material, accent: THREE.Material,
               <mesh position={[-w / 2 + (w / arr.length) * (i + 1), h / 2 + 0.03, d / 2 + 0.001]} material={dark}>
                 <boxGeometry args={[0.004, h - 0.12, 0.002]} />
               </mesh>
-              <mesh position={[-w / 2 + (w / arr.length) * (i + 0.5) + (i % 2 ? -1 : 1) * (w / arr.length) * 0.38, h * 0.52, d / 2 + 0.012]} material={accent}>
+              <mesh position={[-w / 2 + (w / arr.length) * (i + 0.5) + (i % 2 ? -1 : 1) * (w / arr.length) * 0.38, h * 0.52, d / 2 - 0.006]} material={accent}>
                 <boxGeometry args={[0.012, 0.22, 0.012]} />
               </mesh>
             </group>
@@ -270,7 +270,7 @@ function buildBody(o: SceneObject, main: THREE.Material, accent: THREE.Material,
             <mesh position={[0, h * 0.4, 0]} scale={[w, 1, d]} material={glow}>
               <cylinderGeometry args={[0.32, 0.5, h * 0.8, low ? 12 : 32, 1, true]} />
             </mesh>
-            <mesh position={[0, h * 0.9 + 0.6 / 2, 0]} material={dark}>
+            <mesh position={[0, h * 0.9 + 0.6 / 2, 0]} material={dark} userData={{ decor: true }}>
               <cylinderGeometry args={[0.004, 0.004, 0.6 + h * 0.2, 4]} />
             </mesh>
           </group>
