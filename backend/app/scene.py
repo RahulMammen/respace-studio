@@ -238,3 +238,5 @@ class Brief(Strict):
 class Inventory(Strict):
     items: list[FurnitureRequirement] = Field(default_factory=list, max_length=40)
     walkway_clearance_m: Finite = Field(0.9, ge=0.5, le=1.8)
+    # Narrower path needed to reach individual furniture (stepping in beside a seat).
+    access_clearance_m: Finite = Field(0.6, ge=0.45, le=1.2)

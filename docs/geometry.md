@@ -30,19 +30,29 @@
 | Counts | Each required item appears exactly `count` times. Optional items may appear up to `count` times. Existing pieces stay marked existing. Room assignment is respected. |
 | Containment | Footprint inside the room polygon, with 5 mm tolerance. Wall-mounted items must sit flush (within 6 cm) and parallel to a wall face, facing into the room. Items must fit under the ceiling. |
 | Collisions | Floor items may not overlap by more than 1 cm². Rugs are overlays and never collide. Table lamps sit on a table, desk or shelf (otherwise a warning). Pendants hang from the ceiling. Wall art has no floor footprint. Dining chairs may tuck up to 0.22 m under a table or desk. |
-| Openings | No floor item inside an inward door's swing sector or inside the clear zone in front of a door or passage (depth = max(0.6 m, walkway clearance)). A door narrower than the clearance gives a warning. Items taller than the sill within 0.3 m of a window give a warning. Wall art may not cover an opening. |
+| Openings | No floor item inside an inward door's swing sector or inside the clear zone in front of a door or passage (depth = max(0.6 m, main walkway width)). A door narrower than the clearance gives a warning. Items taller than the sill within 0.3 m of a window give a warning. Wall art may not cover an opening. |
 | Walkway | The connectivity test described below. |
 
 Overall status is `invalid` if there is any error, `warnings` if there are only warnings, and `valid` otherwise.
 
 ## Walkway connectivity check (approximate)
-A gap between each pair of objects does not prove that a person can walk through the room. ReSpace tests whether there is a connected route instead.
+A gap between each pair of objects does not prove that a person can walk through the room. ReSpace tests whether there is a connected route instead. It uses two configurable widths, both set in the Furnish step:
 
-1. Model the walker as a disc whose diameter is the walkway clearance `c` (default 0.9 m, adjustable 0.6–1.5 m). Let `r = c/2`.
-2. Compute the walker-centre free space in vector geometry with Shapely: the room polygon eroded by `r`, minus the union of floor-blocking footprints dilated by `r`. Rugs, wall items, table lamps and pendants do not block.
-3. Find the connected piece of free space that contains the main entrance's entry point (the door centre moved `r + 2 cm` into the room). If no door is marked as the entrance, the first door is used.
-4. Every other door's entry point must lie in that same piece.
-5. Every furniture item with an access side must be reachable. The item's access zone (the strip in front of seats, desks and storage, the strip behind dining chairs, or a ring around tables and beds) must overlap the entrance's piece by at least 0.01 m². Zone depth is the item's access depth plus `r`.
+| Width | Default | Purpose |
+|---|---|---|
+| Main walkway `c` | 0.9 m (0.6–1.5) | Routes between doors |
+| Access path `a` | 0.6 m (0.45–1.2, never wider than `c`) | Reaching each piece of furniture from the entrance, for example stepping in beside a seat |
+
+1. Model each walker as a disc. For a width `w`, `r = w/2`. Compute the walker-centre free space with Shapely: the room polygon eroded by `r`, minus the union of floor-blocking footprints dilated by `r`. Rugs, wall items, table lamps and pendants do not block.
+2. **Doors.** Using the main walkway, find the connected piece that contains the main entrance's entry point (the door centre moved `r + 2 cm` into the room). If no door is marked as the entrance, the first door is used. Every other door's entry point must lie in that same piece.
+3. **Furniture.** Using the access path, every item with an access side must be reachable. Its access zone must overlap the entrance's piece by at least 0.01 m². The zones are:
+   - front of seats, desks and storage;
+   - behind dining chairs;
+   - a ring around tables and beds.
+
+   Front and back zones extend sideways by `r`, so a seat facing a coffee table can be reached from beside its front edge. Zone depth is the item's access depth plus `r`.
+
+The defaults were chosen after the first live AI run (2026-10-18). With one 0.9 m width used for everything, every proposal failed because armchairs grouped around a coffee table could only be approached from directly in front. Separating the main route from the furniture access path matches how architects distinguish primary circulation from access space.
 
 **Resolution.** The computation is exact polygon geometry, not a raster grid. The only approximation is the arcs in the buffers: 16 segments per quarter circle, so the chord error is under 0.6 mm at r = 0.5 m.
 

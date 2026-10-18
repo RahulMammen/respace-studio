@@ -482,3 +482,20 @@ def test_extraction_is_draft_only(client):
     # second call is cached
     again = client.post(f"/api/projects/{pid}/ai/extract-geometry", json={"asset_id": aid, "calibration": cal}).json()
     assert again["cached"] is True
+
+
+def test_repair_timeout_keeps_initial_proposals(client):
+    pid = setup_project(client)
+    replies = iter([json.dumps({"proposals": [proposal(OUTSIDE)], "conflicts": []})])
+
+    def handler(req):
+        if req.task == "repair":
+            raise AITimeout()
+        return next(replies)
+
+    install(handler)
+    r = client.post(f"/api/projects/{pid}/ai/generate", json={"count": 1})
+    assert r.status_code == 200
+    alt = r.json()["alternatives"][0]
+    assert alt["validation_status"] == "invalid"
+    assert any("repair stopped" in n for n in alt["notes"])

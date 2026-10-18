@@ -108,7 +108,11 @@ def inventory_context(inventory: Inventory) -> dict[str, Any]:
         if it.notes:
             entry["notes"] = it.notes
         items.append(entry)
-    return {"items": items, "walkway_clearance_m": inventory.walkway_clearance_m}
+    return {
+        "items": items,
+        "walkway_clearance_m": inventory.walkway_clearance_m,
+        "access_clearance_m": min(inventory.access_clearance_m, inventory.walkway_clearance_m),
+    }
 
 
 def scene_context(scene: Scene) -> dict[str, Any]:

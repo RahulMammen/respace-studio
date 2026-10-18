@@ -139,6 +139,7 @@ export interface FurnitureRequirement {
 export interface Inventory {
   items: FurnitureRequirement[];
   walkway_clearance_m: number;
+  access_clearance_m: number;
 }
 
 export interface Brief {
@@ -188,6 +189,7 @@ export interface ValidationReport {
     openings?: { room_id: string; id: string; kind: OpeningKind; a: number[]; b: number[] }[];
     walkway?: WalkwayResult[];
     clearance_m?: number;
+    access_clearance_m?: number;
   };
 }
 

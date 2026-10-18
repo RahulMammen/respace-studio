@@ -185,20 +185,38 @@ export default function FurnishStep() {
           </form>
         </section>
         <section className="panel-section">
-          <h3>Walkway clearance</h3>
-          <p className="muted small">Used to check that a route of this width connects the entrance to every piece of furniture.</p>
-          <div className="range-row">
-            <input
-              type="range"
-              min={0.6}
-              max={1.5}
-              step={0.05}
-              value={inventory.walkway_clearance_m}
-              onChange={(e) => setInventory({ ...inventory, walkway_clearance_m: Number(e.target.value) })}
-              aria-label="Walkway clearance in metres"
-            />
-            <strong className="num">{inventory.walkway_clearance_m.toFixed(2)} m</strong>
-          </div>
+          <h3>Circulation</h3>
+          <p className="muted small">The main walkway must connect all doors. A narrower access path must reach each piece of furniture from the entrance.</p>
+          <label className="field">
+            <span>Main walkway width</span>
+            <div className="range-row">
+              <input
+                type="range"
+                min={0.6}
+                max={1.5}
+                step={0.05}
+                value={inventory.walkway_clearance_m}
+                onChange={(e) => setInventory({ ...inventory, walkway_clearance_m: Number(e.target.value) })}
+                aria-label="Main walkway width in metres"
+              />
+              <strong className="num">{inventory.walkway_clearance_m.toFixed(2)} m</strong>
+            </div>
+          </label>
+          <label className="field">
+            <span>Access path to furniture</span>
+            <div className="range-row">
+              <input
+                type="range"
+                min={0.45}
+                max={1.2}
+                step={0.05}
+                value={inventory.access_clearance_m ?? 0.6}
+                onChange={(e) => setInventory({ ...inventory, access_clearance_m: Number(e.target.value) })}
+                aria-label="Access path width in metres"
+              />
+              <strong className="num">{(inventory.access_clearance_m ?? 0.6).toFixed(2)} m</strong>
+            </div>
+          </label>
         </section>
         <section className="panel-section">
           <h3>Reference images</h3>

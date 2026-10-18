@@ -384,7 +384,7 @@ export default function DesignStep({ onDiagnostics }: { onDiagnostics: (d: Recor
               <span><i className="lg prop" /> Proposed change</span>
               <span><i className="lg lock" /> Locked</span>
               <span><i className="lg bad" /> Conflict</span>
-              {prefs.showWalkway && <span><i className="lg walk" /> Walkway {validation?.derived.clearance_m?.toFixed(2)} m</span>}
+              {prefs.showWalkway && <span><i className="lg walk" /> Walkway {validation?.derived.clearance_m?.toFixed(2)} m · access {validation?.derived.access_clearance_m?.toFixed(2)} m</span>}
             </div>
           )}
           {proposal && !previewBefore && <div className="preview-flag">Preview: not applied yet</div>}

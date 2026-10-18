@@ -42,8 +42,9 @@ async def run() -> int:
                     "wall (y=0). Place one 2.1 m x 0.9 m sofa against the south wall facing north."
                 ),
                 schema=schema,
-                max_output_tokens=512,
+                max_output_tokens=2048,
                 temperature=0.2,
+                thinking="low",
             )
         )
         elapsed = time.perf_counter() - started

@@ -85,7 +85,8 @@ def _snap_rotation(deg: float) -> float:
 
 
 class Placer:
-    def __init__(self, room: Room, clearance: float, rng: random.Random) -> None:
+    def __init__(self, room: Room, clearance: float, rng: random.Random, access: float | None = None) -> None:
+        self.access = access
         self.room = room
         self.poly = room_polygon(room)
         self.clearance = clearance
@@ -125,7 +126,7 @@ class Placer:
                     return False
             trial = [*self.placed, obj]
             polys = {o.id: footprint_polygon(o) for o in trial}
-            result = walkway_check(self.room, trial, polys, self.clearance)
+            result = walkway_check(self.room, trial, polys, self.clearance, self.access)
             if any(i.severity == "error" for i in result.issues):
                 return False
         return True
@@ -212,7 +213,9 @@ def rule_based_scene(geometry: Geometry, inventory: Inventory, seed: int = 0) ->
     palette = PALETTES[seed % len(PALETTES)]
     rooms = {r.id: r for r in geometry.rooms}
     default_room = geometry.rooms[0]
-    placers = {r.id: Placer(r, inventory.walkway_clearance_m, rng) for r in geometry.rooms}
+    placers = {
+        r.id: Placer(r, inventory.walkway_clearance_m, rng, inventory.access_clearance_m) for r in geometry.rooms
+    }
     unresolved: list[str] = []
 
     reqs = sorted(inventory.items, key=lambda r: ORDER.index(r.category))

@@ -84,6 +84,11 @@ class StructuredRequest:
     images: list[ImagePart] = field(default_factory=list)
     max_output_tokens: int = 8192
     temperature: float = 0.7
+    # Reasoning effort; thinking tokens count against max_output_tokens on Gemini 3.x.
+    thinking: str = "low"  # minimal | low | medium | high
+    # Per-request overrides (None = provider defaults).
+    timeout_s: float | None = None
+    max_retries: int | None = None
 
 
 @dataclass

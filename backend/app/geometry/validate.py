@@ -418,7 +418,9 @@ def validate_scene(
     # ---- walkway connectivity
     walkway: list[dict[str, Any]] = []
     for room in geometry.rooms:
-        result = walkway_check(room, [o for o in valid_objs if o.room_id == room.id], polys, clearance)
+        result = walkway_check(
+            room, [o for o in valid_objs if o.room_id == room.id], polys, clearance, inventory.access_clearance_m
+        )
         walkway.append(result.as_dict())
         for issue in result.issues:
             issue.check = "walkway"
@@ -437,6 +439,7 @@ def validate_scene(
             "openings": derived_openings,
             "walkway": walkway,
             "clearance_m": clearance,
+            "access_clearance_m": min(inventory.access_clearance_m, clearance),
         }
     return ValidationReport(status=_status(issues), issues=issues, checks=checks, derived=derived)
 
@@ -506,48 +509,69 @@ def access_zone(obj: SceneObject, reach: float) -> Polygon | None:
         return None
     depth = spec.access_depth_m + reach
     w, d = obj.size.w, obj.size.d
+    # Front/back zones extend sideways by ``reach`` so a seat can be approached from the
+    # side of its front edge, as people do in conversation groups.
     if spec.access_mode == "front":
-        return Polygon(rect_corners(obj.position, obj.rotation_deg, w, d, d / 2, d / 2 + depth))
+        return Polygon(rect_corners(obj.position, obj.rotation_deg, w + 2 * reach, d, d / 2, d / 2 + depth))
     if spec.access_mode == "back":
-        return Polygon(rect_corners(obj.position, obj.rotation_deg, w, d, -d / 2 - depth, -d / 2))
+        return Polygon(rect_corners(obj.position, obj.rotation_deg, w + 2 * reach, d, -d / 2 - depth, -d / 2))
     base = footprint_polygon(obj)
     return base.buffer(depth, quad_segs=ARC_QUAD_SEGS).difference(base)
 
 
-def walkway_check(room: Room, objects: list[SceneObject], polys: dict[str, Polygon], clearance: float) -> WalkwayResult:
-    """Approximate connectivity of a walker of diameter ``clearance``.
-
-    Free space for the walker's centre = room interior eroded by r and minus
-    floor-blocking footprints dilated by r (r = clearance / 2). Two places are
-    connected when they lie in the same connected piece of that free space.
-    """
-
-    r = clearance / 2
-    issues: list[Issue] = []
-    rpoly = room_polygon(room)
-    blockers = [polys[o.id] for o in objects if collision_kind(o.category, o.variant) == "floor"]
+def _free_pieces(rpoly: Polygon, blockers: list[Polygon], r: float) -> list[Polygon]:
     free = rpoly.buffer(-r, quad_segs=ARC_QUAD_SEGS)
     if blockers:
         free = free.difference(unary_union(blockers).buffer(r, quad_segs=ARC_QUAD_SEGS))
-    pieces = _polys(free)
+    return _polys(free)
+
+
+def _piece_for(pieces: list[Polygon], pt: tuple[float, float]) -> int | None:
+    p = SPoint(pt)
+    for idx, piece in enumerate(pieces):
+        if piece.buffer(0.01).contains(p):
+            return idx
+    return None
+
+
+def walkway_check(
+    room: Room,
+    objects: list[SceneObject],
+    polys: dict[str, Polygon],
+    clearance: float,
+    access_clearance: float | None = None,
+) -> WalkwayResult:
+    """Approximate connectivity for walkers of two widths.
+
+    Free space for a walker's centre = room interior eroded by r and minus
+    floor-blocking footprints dilated by r. Two places are connected when they
+    lie in the same connected piece of that free space.
+
+    - Main walkway (r = clearance / 2): the entrance must connect to every other door.
+    - Furniture access (r = access_clearance / 2): the entrance must connect to each
+      item's access zone. Defaults to the main clearance when not given.
+    """
+
+    access = clearance if access_clearance is None else min(access_clearance, clearance)
+    r = clearance / 2
+    ra = access / 2
+    issues: list[Issue] = []
+    rpoly = room_polygon(room)
+    blockers = [polys[o.id] for o in objects if collision_kind(o.category, o.variant) == "floor"]
+    pieces = _free_pieces(rpoly, blockers, r)
+    access_pieces = pieces if ra == r else _free_pieces(rpoly, blockers, ra)
     doors = [op for op in room.openings if op.kind in ("door", "opening") and op.wall_index < len(room.polygon)]
-    if not pieces:
-        issues.append(Issue("no_free_floor", "error", f"{room.name}: no floor area is {clearance:.2f} m wide."))
-        return WalkwayResult(room.id, clearance, None, [], [], [o.id for o in objects], [], issues)
+    accessible = [o for o in objects if access_zone(o, ra) is not None]
+    if not access_pieces:
+        issues.append(Issue("no_free_floor", "error", f"{room.name}: no floor area is {access:.2f} m wide."))
+        return WalkwayResult(room.id, clearance, None, [], [], [o.id for o in accessible], [], issues)
     if not doors:
         issues.append(Issue("no_entrance", "warning", f"{room.name}: add a door to check the walkway."))
         return WalkwayResult(room.id, clearance, None, [_rings(p) for p in pieces], [], [], [], issues)
     entrance = next((d for d in doors if d.is_entrance), doors[0])
-    probe = r + 0.02
 
-    def piece_for(pt: tuple[float, float]) -> int | None:
-        p = SPoint(pt)
-        for idx, piece in enumerate(pieces):
-            if piece.buffer(0.01).contains(p):
-                return idx
-        return None
-
-    start = piece_for(opening_entry_point(room, entrance, probe))
+    start = _piece_for(pieces, opening_entry_point(room, entrance, r + 0.02)) if pieces else None
+    unreached_doors: list[str] = []
     if start is None:
         issues.append(
             Issue(
@@ -556,41 +580,38 @@ def walkway_check(room: Room, objects: list[SceneObject], polys: dict[str, Polyg
                 f"{room.name}: no {clearance:.2f} m clear space inside entrance '{entrance.id}'.",
             )
         )
-        return WalkwayResult(
-            room.id,
-            clearance,
-            entrance.id,
-            [],
-            [_rings(p) for p in pieces],
-            [o.id for o in objects if access_zone(o, r) is not None],
-            [],
-            issues,
-        )
-    reach_piece = pieces[start].buffer(0.005)
-    unreached_doors = [
-        d.id for d in doors if d.id != entrance.id and piece_for(opening_entry_point(room, d, probe)) != start
-    ]
-    if unreached_doors:
-        issues.append(
-            Issue(
-                "door_unreachable",
-                "error",
-                f"{room.name}: no clear route from '{entrance.id}' to {', '.join(unreached_doors)}.",
+    else:
+        unreached_doors = [
+            d.id
+            for d in doors
+            if d.id != entrance.id and _piece_for(pieces, opening_entry_point(room, d, r + 0.02)) != start
+        ]
+        if unreached_doors:
+            issues.append(
+                Issue(
+                    "door_unreachable",
+                    "error",
+                    f"{room.name}: no {clearance:.2f} m route from '{entrance.id}' to {', '.join(unreached_doors)}.",
+                )
             )
-        )
+
+    astart = _piece_for(access_pieces, opening_entry_point(room, entrance, ra + 0.02))
     unreached: list[str] = []
-    for obj in objects:
-        zone = access_zone(obj, r)
-        if zone is None:
-            continue
-        if zone.intersection(reach_piece).area < 0.01:
-            unreached.append(obj.id)
+    if astart is None:
+        unreached = [o.id for o in accessible]
+    else:
+        reach_piece = access_pieces[astart].buffer(0.005)
+        for obj in accessible:
+            zone = access_zone(obj, ra)
+            if zone is not None and zone.intersection(reach_piece).area < 0.01:
+                unreached.append(obj.id)
     if unreached:
         issues.append(
             Issue(
                 "furniture_unreachable",
                 "error",
-                f"{room.name}: {', '.join(unreached)} cannot be reached on a {clearance:.2f} m walkway.",
+                f"{room.name}: {', '.join(unreached)} cannot be reached from the entrance "
+                f"on a {access:.2f} m access path.",
                 unreached,
             )
         )
@@ -598,7 +619,7 @@ def walkway_check(room: Room, objects: list[SceneObject], polys: dict[str, Polyg
         room.id,
         clearance,
         entrance.id,
-        [_rings(pieces[start])],
+        [_rings(pieces[start])] if start is not None else [],
         [_rings(p) for i, p in enumerate(pieces) if i != start],
         unreached,
         unreached_doors,

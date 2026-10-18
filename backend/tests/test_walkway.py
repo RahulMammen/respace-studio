@@ -84,3 +84,30 @@ def test_rule_based_layout_is_valid_for_living_room():
         s = rule_based_scene(g, inv, seed=seed)
         report = validate_scene(g, inv, s)
         assert report.errors == [], (seed, [i.message for i in report.errors], s.unresolved)
+
+
+def test_main_route_uses_walkway_clearance_and_furniture_uses_access_clearance():
+    # A 0.75 m bottleneck between two doors fails the 0.9 m main walkway, while a chair
+    # beyond it is still reachable on the default 0.6 m access path.
+    room = rect_room(5, 4, openings=[door(wall=0, offset=1.0), door(wall=2, offset=1.0, entrance=False, oid="door-2")])
+    s = scene(
+        obj("wardrobe-1", "wardrobe", 1.5, 2.0, 3.0, 0.6, h=2.1),
+        obj("shelf-1", "bookshelf", 4.375, 2.0, 1.25, 0.35, h=1.9),
+        obj("chair-1", "armchair", 1.0, 3.3, 0.8, 0.8, rot=180, material="linen"),
+    )
+    report = validate_scene(geometry(room), inventory(), s)
+    found = codes(report)
+    assert "door_unreachable" in found
+    assert "furniture_unreachable" not in found
+    assert report.derived["access_clearance_m"] == 0.6
+
+
+def test_seat_reachable_from_the_side_of_its_front():
+    # Chair faces a coffee table 0.4 m away: its front is not walkable, but a person can
+    # step in beside the front edge.
+    g = geometry(rect_room(5, 4, openings=[door(wall=0, offset=1.0)]))
+    s = scene(
+        obj("table-1", "table", 2.5, 2.0, 1.1, 0.6, h=0.4, variant="coffee"),
+        obj("chair-1", "armchair", 1.15, 2.0, 0.8, 0.8, rot=270, material="linen"),
+    )
+    assert "furniture_unreachable" not in codes(validate_scene(g, inventory(), s))

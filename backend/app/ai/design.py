@@ -33,7 +33,7 @@ from .context import (
     inventory_context,
     scene_context,
 )
-from .provider import AIInvalidOutput, DesignModelProvider, ImagePart, StructuredRequest, inline_json_schema
+from .provider import AIError, AIInvalidOutput, DesignModelProvider, ImagePart, StructuredRequest, inline_json_schema
 from .schemas import AIEditPlan, AIProposal, AIProposalSet
 
 log = logging.getLogger("respace.ai")
@@ -155,8 +155,21 @@ def proposal_to_scene(p: AIProposal, geometry: Geometry) -> tuple[Scene, list[st
     return scene, errors
 
 
+REPAIR_HINTS = {
+    "furniture_unreachable": "Open a path of access_clearance_m from the entrance door to the front (or a front "
+    "corner) of each listed item; pull items away from walls or neighbours that wall them in.",
+    "door_unreachable": "Keep a walkway_clearance_m route between the doors free of furniture.",
+    "door_blocked": "Move items out of the door swing quarter-circle and the clear zone just inside the door.",
+    "outside_room": "Keep the whole rotated footprint inside the room polygon.",
+    "overlap": "Separate the two footprints; only rugs may overlap other furniture.",
+}
+
+
 def _issue_lines(report: ValidationReport, conversion_errors: list[str]) -> list[str]:
-    lines = [f"- [{i.code}] {i.message}" for i in report.errors][:MAX_ISSUES_IN_REPAIR]
+    lines = []
+    for i in report.errors[:MAX_ISSUES_IN_REPAIR]:
+        hint = REPAIR_HINTS.get(i.code)
+        lines.append(f"- [{i.code}] {i.message}" + (f" Fix: {hint}" if hint else ""))
     lines += [f"- [conversion] {e}" for e in conversion_errors[:4]]
     return lines
 
@@ -198,9 +211,10 @@ async def generate_proposals(
             "Every required inventory item must appear exactly `count` times with its requirement_id.",
             "Optional items may be omitted. Extra decorative items (rug, lamp, wall_art) are allowed only with "
             "requirement_id '' and should be few.",
-            "Keep doors' swing areas and a clear zone in front of each door free. Keep a continuous walkway of "
-            "walkway_clearance_m from the entrance door to the usable side of every seat, table, bed, desk and "
-            "storage front.",
+            "Keep door swing areas and a clear zone in front of each door free. Keep a continuous route of "
+            "walkway_clearance_m between all doors, and a path of at least access_clearance_m from the entrance "
+            "to the front of every seat, desk and storage item, to the back of dining chairs, and to one side of "
+            "tables and beds. Never enclose a seat on all sides: leave its front or a front corner open.",
             "If locked objects exist in current_scene, copy them with identical locked properties.",
             "Context JSON:",
             dumps(context),
@@ -219,6 +233,8 @@ async def generate_proposals(
             images=reference_images or [],
             max_output_tokens=16000,
             temperature=0.9,
+            timeout_s=180,
+            max_retries=1,
         )
     )
     calls += 1
@@ -263,11 +279,17 @@ async def generate_proposals(
                     schema=schema,
                     max_output_tokens=16000,
                     temperature=0.3,
+                    timeout_s=150,
+                    max_retries=0,
                 )
             )
             calls += 1
             repaired = _parse(AIProposalSet, response.text).proposals
-        except AIInvalidOutput:
+        except AIError as err:
+            # Keep the proposals already generated; validation still flags them.
+            calls += 1
+            for r in failing:
+                r.notes.append(f"Automatic repair stopped: {err.user_message}")
             break
         for r, p in zip(failing, repaired, strict=False):
             scene, conv = proposal_to_scene(p, geometry)
